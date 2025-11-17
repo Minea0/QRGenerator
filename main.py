@@ -1,17 +1,25 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
+
 from PIL import Image, ImageTk
 import qrcode
 from qrcode.image.svg import SvgImage
 from io import BytesIO
 from urllib.parse import urlparse
 
+import tempfile
+import zipfile
+import shutil
+
 import requests
 import os
 import sys
 import subprocess
+import webbrowser
 
-APP_VERSION = "1.1"
+APP_VERSION = "1.0.1"
+UPDATE_URL = "https://raw.githubusercontent.com/Minea0/QRGenerator/main/latest_version.txt"
+ZIP_URL = "https://github.com/Minea0/QRGenerator/releases/download/v1.0.1/QRGenerator-1.0.1.zip"
 
 
 
@@ -49,18 +57,17 @@ class QRGui:
         self.ec_level = tk.StringVar(value="M")
         self.format = tk.StringVar(value="png")
 
-        # ------------------------
+
         # Input field
-        # ------------------------
         self.entry = ttk.Entry(root, font=("Arial", 14), width=40)
         self.entry.pack(pady=10)
         self.entry.bind("<KeyRelease>", self.auto_update)
         self.entry.bind("<Control-v>", self.auto_update)
         self.entry.bind("<ButtonRelease>", self.auto_update)
+        self.entry.focus_set()
 
-        # ------------------------
+
         # QR Display Area
-        # ------------------------
         self.qr_label = ttk.Label(root)
         self.qr_label.pack(pady=10)
 
@@ -89,26 +96,80 @@ class QRGui:
 
         ttk.Label(settings_frame, text="Format:").pack(anchor="w", pady=(5,0))
         ttk.Combobox(settings_frame, textvariable=self.format, values=["png", "svg"], state="readonly").pack(fill="x")
-        ttk.Button(root, text="Check for Updates", command=self.check_updates).pack(pady=5)
 
-
-        # ------------------------
         # Save button
-        # ------------------------
         ttk.Button(root, text="Save QR", command=self.save_qr).pack(pady=20)
         
-        # Version label
-        version_label = ttk.Label(root, text=f"v{APP_VERSION}", foreground="#666")
-        version_label.pack(side="bottom", pady=5)
+
+
+        # version and update tooltip
+        footer = tk.Frame(root)
+        footer.pack(side="bottom", pady=5)
+
+        version_label = tk.Label(footer, text=f"v{APP_VERSION}", fg="#666")
+        version_label.pack(side="left")
+
+        link = tk.Label(footer, text="Check for updates", fg="blue", cursor="hand2")
+        link.pack(side="left", padx=10)
+        link.bind("<Button-1>", lambda e: self.check_updates())
 
 
 
         self.generated_img = None  # store pillow image
         self.generated_svg = None  # store svg bytes
 
-    # ------------------------
+
+    #handle update checking
+    def check_updates(self):
+        try:
+            latest = requests.get(UPDATE_URL, timeout=5).text.strip()
+        except:
+            tk.messagebox.showerror("Update check failed", "Cannot contact update server.")
+            return
+
+        if latest == APP_VERSION:
+            tk.messagebox.showinfo("Up to date", "You already have the latest version.")
+            return
+
+        if not tk.messagebox.askyesno("Update available",
+                f"A new version ({latest}) is available. Install?"):
+            return
+
+        try:
+            temp_zip = os.path.join(tempfile.gettempdir(), "QRGenerator_Update.zip")
+            with open(temp_zip, "wb") as f:
+                f.write(requests.get(ZIP_URL, timeout=10).content)
+
+            extract_path = os.path.join(tempfile.gettempdir(), "QRGenerator_Update")
+            if os.path.exists(extract_path):
+                shutil.rmtree(extract_path)
+
+            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                zip_ref.extractall(extract_path)
+
+            install_path = os.path.dirname(sys.argv[0])
+
+            # copy over new files
+            for rootdir, dirs, files in os.walk(extract_path):
+                rel = os.path.relpath(rootdir, extract_path)
+                dest = os.path.join(install_path, rel)
+                if not os.path.exists(dest):
+                    os.makedirs(dest)
+                for file in files:
+                    shutil.copy2(os.path.join(rootdir, file),
+                                os.path.join(dest, file))
+
+            tk.messagebox.showinfo("Update installed", "Restart the program to finish updating.")
+            self.root.quit()
+
+        except Exception as e:
+            tk.messagebox.showerror("Update failed", str(e))
+
+
+
+
+
     # Auto-generate QR
-    # ------------------------
     def auto_update(self, event=None):
         text = self.entry.get().strip()
         if not text:
@@ -116,9 +177,8 @@ class QRGui:
             return
         self.generate_qr(text)
 
-    # ------------------------
+
     # Generate QR
-    # ------------------------
     def generate_qr(self, link):
         link = normalize_url(link)
         qr = qrcode.QRCode(
@@ -147,18 +207,16 @@ class QRGui:
         self.generated_img = img
         self.update_display(img)
 
-    # ------------------------
+
     # Display QR in GUI
-    # ------------------------
     def update_display(self, img):
         img = img.resize((250, 250))
         tk_img = ImageTk.PhotoImage(img)
         self.qr_label.config(image=tk_img)
         self.qr_label.image = tk_img
 
-    # ------------------------
+
     # Save QR to a file
-    # ------------------------
     def save_qr(self):
         if self.generated_img is None and self.generated_svg is None:
             return
