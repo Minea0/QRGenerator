@@ -1,15 +1,10 @@
-; ----------------------------------------------------------
-; Inno Setup installer for QRGenerator
-; ----------------------------------------------------------
-
 [Setup]
 AppName=QRGenerator
-AppVersion=1.0.0
+AppVersion=1.0.1
 DefaultDirName={pf}\QRGenerator
 DefaultGroupName=QRGenerator
-DisableProgramGroupPage=no
 OutputDir=output
-OutputBaseFilename=QRGenerator_Setup
+OutputBaseFilename=QRGeneratorSetup
 SetupIconFile=logo.ico
 Compression=lzma
 SolidCompression=yes
@@ -20,11 +15,8 @@ WizardStyle=modern
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
 
-; Optional: self-delete installer if checkbox is selected
-AppendDefaultDirName=no
-
 [Files]
-Source: "dist\QRGenerator\*"; DestDir: "{app}"; Flags: recursesubdirs
+Source: "dist\QRGenerator\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{group}\QRGenerator"; Filename: "{app}\QRGenerator.exe"
@@ -36,5 +28,25 @@ Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
 [Run]
 Filename: "{app}\QRGenerator.exe"; Description: "Launch QR Generator"; Flags: nowait postinstall skipifsilent
 
-[UninstallDelete]
-Type: filesandordirs; Name: "{app}"
+[Registry]
+; Mark first-time install in HKCU
+Root: HKCU; Subkey: "Software\QRGenerator"; ValueType: dword; ValueName: "Installed"; ValueData: 1; Flags: uninsdeletevalue
+
+[Code]
+function InitializeSetup(): Boolean;
+var
+  Installed: Cardinal;
+begin
+  // Check registry if already installed
+  if RegQueryDWordValue(HKCU, 'Software\QRGenerator', 'Installed', Installed) then
+  begin
+    // Already installed -> run silently
+    WizardForm.Hide;
+    Result := True;
+  end
+  else
+  begin
+    // First-time install -> show wizard
+    Result := True;
+  end;
+end;

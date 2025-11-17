@@ -1,3 +1,4 @@
+from threading import local
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -17,10 +18,11 @@ import sys
 import subprocess
 import webbrowser
 
-APP_VERSION = "1.0.1"
-UPDATE_URL = "https://raw.githubusercontent.com/Minea0/QRGenerator/main/latest_version.txt"
-ZIP_URL = "https://github.com/Minea0/QRGenerator/releases/download/v1.0.1/QRGenerator-1.0.1.zip"
+#pyinstaller --onedir --noconsole --icon=logo.ico --name "QRGenerator" main.py
 
+APP_VERSION = "1.0.2"
+UPDATE_URL = "https://raw.githubusercontent.com/Minea0/QRGenerator/main/latest_version.txt"
+INSTALLER_URL = "https://github.com/Minea0/QRGenerator/releases/latest/download/QRGeneratorSetup.exe"
 
 
 # ------------------------
@@ -121,49 +123,45 @@ class QRGui:
 
     #handle update checking
     def check_updates(self):
+        # Get latest version
         try:
             latest = requests.get(UPDATE_URL, timeout=5).text.strip()
         except:
             tk.messagebox.showerror("Update check failed", "Cannot contact update server.")
             return
 
-        if latest == APP_VERSION:
+        # Compare versions
+        def version_to_tuple(v):
+            return tuple(map(int, v.split('.')))
+
+        if version_to_tuple(APP_VERSION) >= version_to_tuple(latest):
             tk.messagebox.showinfo("Up to date", "You already have the latest version.")
             return
 
-        if not tk.messagebox.askyesno("Update available",
-                f"A new version ({latest}) is available. Install?"):
+        # Ask user
+        if not tk.messagebox.askyesno(
+            "Update available",
+            f"A new version ({latest}) is available.\nInstall now?"
+        ):
             return
 
+        # Download installer
         try:
-            temp_zip = os.path.join(tempfile.gettempdir(), "QRGenerator_Update.zip")
-            with open(temp_zip, "wb") as f:
-                f.write(requests.get(ZIP_URL, timeout=10).content)
-
-            extract_path = os.path.join(tempfile.gettempdir(), "QRGenerator_Update")
-            if os.path.exists(extract_path):
-                shutil.rmtree(extract_path)
-
-            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-                zip_ref.extractall(extract_path)
-
-            install_path = os.path.dirname(sys.argv[0])
-
-            # copy over new files
-            for rootdir, dirs, files in os.walk(extract_path):
-                rel = os.path.relpath(rootdir, extract_path)
-                dest = os.path.join(install_path, rel)
-                if not os.path.exists(dest):
-                    os.makedirs(dest)
-                for file in files:
-                    shutil.copy2(os.path.join(rootdir, file),
-                                os.path.join(dest, file))
-
-            tk.messagebox.showinfo("Update installed", "Restart the program to finish updating.")
-            self.root.quit()
-
+            temp_installer = os.path.join(tempfile.gettempdir(), "QRGeneratorSetup.exe")
+            r = requests.get(INSTALLER_URL, timeout=20)
+            with open(temp_installer, "wb") as f:
+                f.write(r.content)
         except Exception as e:
-            tk.messagebox.showerror("Update failed", str(e))
+            tk.messagebox.showerror("Download failed", str(e))
+            return
+
+        # Run installer and exit
+        try:
+            subprocess.Popen([temp_installer], shell=False)
+            self.root.quit()
+        except Exception as e:
+            tk.messagebox.showerror("Install failed", str(e))
+
 
 
 
